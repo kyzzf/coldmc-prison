@@ -1,0 +1,17 @@
+name: Prison
+version: 1.0.0
+main: se.coldmc.prison.Prison
+api-version: '1.21'
+author: Flake
+description: ColdMC's prison mines in world_prison - pastes the mines, boxes them in, refills each mining cube with a random mix, pays Mining experience for custom ores, and runs each prison as a small dungeon with mobs and rare bosses.
+depend: [FastAsyncWorldEdit]
+softdepend: [WorldGuard, Nexo, MythicMobs, MMOCore, Worlds]
+commands:
+  prison:
+    description: Prison mines (admin).
+    usage: /prison help
+    permission: prison.admin
+permissions:
+  prison.admin:
+    description: Every /prison command.
+    default: op
