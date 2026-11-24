@@ -44,23 +44,30 @@ final class Builder {
     /** Paste the schematic so its lowest corner lands on paste[], then the barrier box. */
     void build(World w, Mine m, boolean paste) throws Exception {
         try (EditSession es = session(w)) {
-            if (paste) {
-                File f = new File(Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit").getDataFolder(),
-                        "schematics/" + m.schematic);
-                ClipboardFormat fmt = ClipboardFormats.findByFile(f);
-                if (fmt == null) throw new IllegalStateException("unknown schematic format: " + f);
-                Clipboard cb;
-                try (ClipboardReader r = fmt.getReader(new FileInputStream(f))) {
-                    cb = r.read();
-                }
-                BlockVector3 to = v(m.paste).add(cb.getOrigin().subtract(cb.getRegion().getMinimumPoint()));
-                Operations.complete(new ClipboardHolder(cb).createPaste(es).to(to).ignoreAirBlocks(true).build());
+            if (paste && m.tiles.isEmpty()) pasteOne(es, m.schematic, v(m.paste));
+            if (paste) for (String[] t : m.tiles) {
+                // each tile has its origin at its own min corner
+                pasteOne(es, t[0], v(m.paste).add(Integer.parseInt(t[1]), 0, Integer.parseInt(t[2])));
+                es.flushQueue();
             }
             es.makeFaces(new CuboidRegion(BukkitAdapter.adapt(w), v(m.boxMin), v(m.boxMax)),
                     BlockTypes.BARRIER.getDefaultState());
         }
         line(w, m);
         fill(w, m);
+    }
+
+    private void pasteOne(EditSession es, String schematic, BlockVector3 minCorner) throws Exception {
+        File f = new File(Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit").getDataFolder(), "schematics/" + schematic);
+        ClipboardFormat fmt = ClipboardFormats.findByFile(f);
+        if (fmt == null) throw new IllegalStateException("unknown schematic format: " + f);
+        Clipboard cb;
+        try (ClipboardReader r = fmt.getReader(new FileInputStream(f))) {
+            cb = r.read();
+        }
+        BlockVector3 to = minCorner.add(cb.getOrigin().subtract(cb.getRegion().getMinimumPoint()));
+        Operations.complete(new ClipboardHolder(cb).createPaste(es).to(to).ignoreAirBlocks(true).build());
+        cb.close();
     }
 
     /** Bedrock under and around the cube wherever the build left it open, so ore never hangs over the void. */

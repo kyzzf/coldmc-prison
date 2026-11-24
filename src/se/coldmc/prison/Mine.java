@@ -19,6 +19,7 @@ final class Mine {
     int[] cubeMin, cubeMax;
     final double[] spawn;
     final List<String[]> mix = new ArrayList<>();      // [block, weight]
+    final List<String[]> tiles = new ArrayList<>();    // [schematic, dx, dz]
     final List<String> mobs, bosses;
 
     // runtime
@@ -45,6 +46,10 @@ final class Mine {
         spawn = new double[]{sp.get(0), sp.get(1), sp.get(2), sp.size() > 3 ? sp.get(3) : 0};
         for (Object o : s.getList("mix", List.of())) {
             if (o instanceof List<?> l && l.size() == 2) mix.add(new String[]{String.valueOf(l.get(0)), String.valueOf(l.get(1))});
+        }
+        for (Object o : s.getList("tiles", List.of())) {
+            if (o instanceof List<?> l && l.size() == 3)
+                tiles.add(new String[]{String.valueOf(l.get(0)), String.valueOf(l.get(1)), String.valueOf(l.get(2))});
         }
         mobs = s.getStringList("mobs");
         bosses = s.getStringList("bosses");

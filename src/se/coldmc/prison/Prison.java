@@ -358,7 +358,7 @@ public final class Prison extends JavaPlugin implements Listener {
             case "build" -> {
                 List<Mine> list = pick(s, a);
                 if (list == null) return true;
-                boolean paste = !(a.length > 2 && a[2].equalsIgnoreCase("nopaste"));
+                boolean paste = !(a[a.length - 1].equalsIgnoreCase("nopaste"));
                 s.sendMessage("§7Building " + list.size() + " prison(s)" + (paste ? "" : " without pasting") + "...");
                 async(s, "build", list, (w, m) -> builder.build(w, m, paste));
             }
@@ -400,7 +400,7 @@ public final class Prison extends JavaPlugin implements Listener {
                 p.performCommand("rg redefine -w " + worldName + " prison_" + m.id);
                 s.sendMessage("§aCube of " + m.title() + " set to " + str(sel[0]) + " -> " + str(sel[1]) + ". Run /prison build " + m.id + " nopaste to fill it.");
             }
-            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all> [nopaste] | reset <id|all> | boss <id> | setcube <id> | cancel | reload");
+            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setcube <id> | cancel | reload");
         }
         return true;
     }
@@ -430,6 +430,16 @@ public final class Prison extends JavaPlugin implements Listener {
 
     List<Mine> pick(CommandSender s, String[] a) {
         if (a.length > 1 && a[1].equalsIgnoreCase("all")) return new ArrayList<>(mines.values());
+        if (a.length > 2 && a[1].equalsIgnoreCase("from")) {     // resume a long build: this prison and every one after it
+            List<Mine> l = new ArrayList<>();
+            boolean on = false;
+            for (Mine m : mines.values()) {
+                if (m.id.equalsIgnoreCase(a[2])) on = true;
+                if (on) l.add(m);
+            }
+            if (l.isEmpty()) s.sendMessage("§cUnknown prison. /prison list");
+            return l.isEmpty() ? null : l;
+        }
         Mine m = mine(s, a);
         return m == null ? null : List.of(m);
     }
