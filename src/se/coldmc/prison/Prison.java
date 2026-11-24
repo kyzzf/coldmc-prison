@@ -81,7 +81,7 @@ public final class Prison extends JavaPlugin implements Listener {
         YamlConfiguration o = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "overrides.yml"));
         for (String id : o.getKeys(false)) {
             Mine m = mines.get(id);
-            if (m == null) continue;
+            if (m == null || !o.contains(id + ".cube.min")) continue;
             m.cubeMin = Mine.ints(o.getIntegerList(id + ".cube.min"));
             m.cubeMax = Mine.ints(o.getIntegerList(id + ".cube.max"));
         }
@@ -148,7 +148,7 @@ public final class Prison extends JavaPlugin implements Listener {
     /** Refill one cube: lift anyone standing in it first (main thread), then the fill (async). */
     void reset(Mine m, boolean announce) {
         World w = world();
-        if (w == null || busy.get()) return;
+        if (w == null || busy.get() || !m.hasCube()) return;
         for (Player p : w.getPlayers()) {
             Location l = p.getLocation();
             if (m.inCube(l) || m.inCube(l.clone().add(0, 1, 0))) {
@@ -184,7 +184,9 @@ public final class Prison extends JavaPlugin implements Listener {
         int bossEvery = Math.max(1, getConfig().getInt("boss-check-minutes", 5)) * 60;
         for (Mine m : mines.values()) {
             List<Player> here = m.players(w);
-            if (m.broken >= pct * m.cubeVolume() || (now - m.lastReset >= resetMs && !here.isEmpty())) {
+            if (!m.hasCube()) {
+                // no cube marked yet: nothing to refill
+            } else if (m.broken >= pct * m.cubeVolume() || (now - m.lastReset >= resetMs && !here.isEmpty())) {
                 reset(m, true);
             } else if (now - m.lastReset >= resetMs) {
                 m.lastReset = now;          // nobody there: no need to refill an untouched cube
@@ -288,8 +290,8 @@ public final class Prison extends JavaPlugin implements Listener {
         World w = world();
         if (w == null || m.bosses.isEmpty()) return false;
         String kind = m.bosses.get(rnd.nextInt(m.bosses.size()));
-        Location at = new Location(w, (m.cubeMin[0] + m.cubeMax[0]) / 2.0 + 0.5, m.cubeMax[1] + 1,
-                (m.cubeMin[2] + m.cubeMax[2]) / 2.0 + 0.5);
+        Location at = !m.hasCube() ? m.spawnAt(w) : new Location(w, (m.cubeMin[0] + m.cubeMax[0]) / 2.0 + 0.5,
+                m.cubeMax[1] + 1, (m.cubeMin[2] + m.cubeMax[2]) / 2.0 + 0.5);
         Entity e = spawn(kind, at);
         if (e == null) {
             getLogger().warning(m.id + ": boss " + kind + " did not spawn");
@@ -335,6 +337,28 @@ public final class Prison extends JavaPlugin implements Listener {
     public boolean onCommand(CommandSender s, Command c, String label, String[] a) {
         String sub = a.length > 0 ? a[0].toLowerCase() : "help";
         switch (sub) {
+            case "unsetcube" -> {
+                Mine m = mine(s, a);
+                if (m == null) return true;
+                m.cubeMin = null;
+                m.cubeMax = null;
+                File f = new File(getDataFolder(), "overrides.yml");
+                YamlConfiguration o = YamlConfiguration.loadConfiguration(f);
+                o.set(m.id, null);
+                try {
+                    o.save(f);
+                } catch (Exception e) {
+                    s.sendMessage("§cCould not save overrides.yml: " + e);
+                }
+                Hooks.cubeRegion(world(), m);
+                s.sendMessage("§a" + m.title() + " has no cube now (its blocks are left as they are).");
+            }
+            case "clearcubes" -> {
+                List<Mine> list = a.length > 1 ? pick(s, a) : new ArrayList<>(mines.values());
+                if (list == null) return true;
+                s.sendMessage("§7Removing the automatic cubes of " + list.size() + " prison(s) and restoring the build there...");
+                async(s, "clearcubes", list, builder::clearAuto);
+            }
             case "cancel" -> {
                 cancel.set(true);
                 s.sendMessage(busy.get() ? "§eThe running job stops after the prison it is on." : "§7No job is running.");
@@ -352,7 +376,7 @@ public final class Prison extends JavaPlugin implements Listener {
                 Mine m = mine(s, a);
                 if (m == null) return true;
                 s.sendMessage("§e" + m.title() + " §7(" + m.theme + ") new: §f" + m.newMaterial
-                        + " §7cube " + str(m.cubeMin) + " -> " + str(m.cubeMax) + " §7mined " + m.broken + "/" + m.cubeVolume()
+                         + (m.hasCube() ? " §7cube " + str(m.cubeMin) + " -> " + str(m.cubeMax) : " §cno cube yet (/prison setcube " + m.id + ")") + " §7mined " + m.broken + "/" + m.cubeVolume()
                         + " §7mobs " + m.alive.size() + " boss " + (bossAlive(m) ? "yes" : "no"));
             }
             case "build" -> {
@@ -397,10 +421,13 @@ public final class Prison extends JavaPlugin implements Listener {
                 } catch (Exception e) {
                     s.sendMessage("§cCould not save overrides.yml: " + e);
                 }
-                p.performCommand("rg redefine -w " + worldName + " prison_" + m.id);
-                s.sendMessage("§aCube of " + m.title() + " set to " + str(sel[0]) + " -> " + str(sel[1]) + ". Run /prison build " + m.id + " nopaste to fill it.");
+                boolean wg = Hooks.cubeRegion(world(), m);
+                s.sendMessage("§aCube of " + m.title() + " set to " + str(sel[0]) + " -> " + str(sel[1])
+                        + (wg ? "" : " §c(WorldGuard region NOT saved - check /rg info -w " + worldName + " prison_" + m.id + ")")
+                        + "§a. Filling it now...");
+                async(s, "fill", List.of(m), builder::fill);
             }
-            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setcube <id> | cancel | reload");
+            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setcube <id> | unsetcube <id> | clearcubes [id|all] | cancel | reload");
         }
         return true;
     }
@@ -446,10 +473,10 @@ public final class Prison extends JavaPlugin implements Listener {
 
     @Override
     public List<String> onTabComplete(CommandSender s, Command c, String label, String[] a) {
-        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setcube", "cancel", "reload");
+        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setcube", "unsetcube", "clearcubes", "cancel", "reload");
         if (a.length == 2) {
             List<String> l = new ArrayList<>();
-            if (a[0].equalsIgnoreCase("build") || a[0].equalsIgnoreCase("reset")) l.add("all");
+            if (a[0].equalsIgnoreCase("build") || a[0].equalsIgnoreCase("reset") || a[0].equalsIgnoreCase("clearcubes")) l.add("all");
             for (String id : mines.keySet()) if (id.startsWith(a[1].toLowerCase())) l.add(id);
             return l;
         }

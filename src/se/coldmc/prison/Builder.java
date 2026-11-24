@@ -7,7 +7,7 @@ import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormat;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardReader;
-import com.sk89q.worldedit.function.mask.BlockTypeMask;
+import com.sk89q.worldedit.function.mask.RegionMask;
 import com.sk89q.worldedit.function.operation.Operations;
 import com.sk89q.worldedit.function.pattern.RandomPattern;
 import com.sk89q.worldedit.math.BlockVector3;
@@ -22,7 +22,7 @@ import org.bukkit.World;
 import java.io.File;
 import java.io.FileInputStream;
 
-/** Every WorldEdit job: paste a prison, box it in barriers, line and fill its mining cube. */
+/** Every WorldEdit job: paste a prison, box it in barriers, fill its mining cube, undo an old automatic cube. */
 final class Builder {
     private final Prison plugin;
 
@@ -41,20 +41,51 @@ final class Builder {
         return BlockVector3.at(a[0], a[1], a[2]);
     }
 
-    /** Paste the schematic so its lowest corner lands on paste[], then the barrier box. */
+    /** Paste the schematic so its lowest corner lands on paste[], then the barrier box, then fill the
+     *  cube if the owner has marked one. */
     void build(World w, Mine m, boolean paste) throws Exception {
         try (EditSession es = session(w)) {
-            if (paste && m.tiles.isEmpty()) pasteOne(es, m.schematic, v(m.paste));
-            if (paste) for (String[] t : m.tiles) {
-                // each tile has its origin at its own min corner
-                pasteOne(es, t[0], v(m.paste).add(Integer.parseInt(t[1]), 0, Integer.parseInt(t[2])));
-                es.flushQueue();
-            }
+            if (paste) pasteSchematic(es, m, null);
             es.makeFaces(new CuboidRegion(BukkitAdapter.adapt(w), v(m.boxMin), v(m.boxMax)),
                     BlockTypes.BARRIER.getDefaultState());
         }
-        line(w, m);
-        fill(w, m);
+        if (m.hasCube()) fill(w, m);
+    }
+
+    /** The whole schematic, or only the tiles that reach into `only` (with a mask, nothing outside it changes). */
+    private void pasteSchematic(EditSession es, Mine m, CuboidRegion only) throws Exception {
+        if (only != null) es.setMask(new RegionMask(only));
+        if (m.tiles.isEmpty()) {
+            pasteOne(es, m.schematic, v(m.paste));
+            return;
+        }
+        for (String[] t : m.tiles) {
+            // each tile has its origin at its own min corner and is TILE wide
+            int dx = Integer.parseInt(t[1]), dz = Integer.parseInt(t[2]);
+            int x0 = m.paste[0] + dx, z0 = m.paste[2] + dz;
+            if (only != null && (x0 > only.getMaximumPoint().x() || x0 + TILE - 1 < only.getMinimumPoint().x()
+                    || z0 > only.getMaximumPoint().z() || z0 + TILE - 1 < only.getMinimumPoint().z())) continue;
+            pasteOne(es, t[0], v(m.paste).add(dx, 0, dz));
+            es.flushQueue();
+        }
+    }
+
+    static final int TILE = 128;
+
+    /** Undo the automatic cube of 2026-11-24 (the owner: "wrong placed mineable blocks surrounded by bedrock"):
+     *  empty the cube and its one-block bedrock shell, then paste the original build back into exactly
+     *  that space. Everything outside it is untouched. */
+    void clearAuto(World w, Mine m) throws Exception {
+        if (m.autoMin == null) return;
+        int[] a = m.autoMin, b = m.autoMax;
+        CuboidRegion r = new CuboidRegion(BukkitAdapter.adapt(w), BlockVector3.at(a[0] - 1, a[1] - 1, a[2] - 1),
+                BlockVector3.at(b[0] + 1, b[1], b[2] + 1));
+        try (EditSession es = session(w)) {
+            es.setBlocks((com.sk89q.worldedit.regions.Region) r, BlockTypes.AIR.getDefaultState());
+        }
+        try (EditSession es = session(w)) {
+            pasteSchematic(es, m, r);
+        }
     }
 
     private void pasteOne(EditSession es, String schematic, BlockVector3 minCorner) throws Exception {
@@ -68,25 +99,6 @@ final class Builder {
         BlockVector3 to = minCorner.add(cb.getOrigin().subtract(cb.getRegion().getMinimumPoint()));
         Operations.complete(new ClipboardHolder(cb).createPaste(es).to(to).ignoreAirBlocks(true).build());
         cb.close();
-    }
-
-    /** Bedrock under and around the cube wherever the build left it open, so ore never hangs over the void. */
-    void line(World w, Mine m) throws Exception {
-        int[] a = m.cubeMin, b = m.cubeMax;
-        com.sk89q.worldedit.world.World ww = BukkitAdapter.adapt(w);
-        try (EditSession es = session(w)) {
-            BlockTypeMask air = new BlockTypeMask(es, BlockTypes.AIR, BlockTypes.CAVE_AIR, BlockTypes.VOID_AIR,
-                    BlockTypes.WATER, BlockTypes.LAVA);
-            BlockState rock = BlockTypes.BEDROCK.getDefaultState();
-            int x0 = a[0] - 1, x1 = b[0] + 1, z0 = a[2] - 1, z1 = b[2] + 1, y0 = a[1] - 1, y1 = b[1];
-            CuboidRegion[] faces = {
-                    new CuboidRegion(ww, BlockVector3.at(x0, y0, z0), BlockVector3.at(x1, y0, z1)),   // floor
-                    new CuboidRegion(ww, BlockVector3.at(x0, y0, z0), BlockVector3.at(x0, y1, z1)),
-                    new CuboidRegion(ww, BlockVector3.at(x1, y0, z0), BlockVector3.at(x1, y1, z1)),
-                    new CuboidRegion(ww, BlockVector3.at(x0, y0, z0), BlockVector3.at(x1, y1, z0)),
-                    new CuboidRegion(ww, BlockVector3.at(x0, y0, z1), BlockVector3.at(x1, y1, z1))};
-            for (CuboidRegion r : faces) es.replaceBlocks(r, air, rock);
-        }
     }
 
     /** A fresh random mix in the whole cube. Nexo ores go in as the note-block state Nexo reads them by. */

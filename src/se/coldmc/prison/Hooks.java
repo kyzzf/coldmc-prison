@@ -46,6 +46,39 @@ final class Hooks {
         }
     }
 
+    /** The cube's WorldGuard region: the only place in world_prison where blocks can be broken. */
+    static boolean cubeRegion(org.bukkit.World w, Mine m) {
+        if (!on("WorldGuard")) return false;
+        try {
+            var rm = com.sk89q.worldguard.WorldGuard.getInstance().getPlatform().getRegionContainer()
+                    .get(com.sk89q.worldedit.bukkit.BukkitAdapter.adapt(w));
+            if (rm == null) return false;
+            String id = "prison_" + m.id;
+            if (!m.hasCube()) {
+                rm.removeRegion(id);
+            } else {
+                var r = new com.sk89q.worldguard.protection.regions.ProtectedCuboidRegion(id,
+                        com.sk89q.worldedit.math.BlockVector3.at(m.cubeMin[0], m.cubeMin[1], m.cubeMin[2]),
+                        com.sk89q.worldedit.math.BlockVector3.at(m.cubeMax[0], m.cubeMax[1], m.cubeMax[2]));
+                r.setPriority(10);
+                var A = com.sk89q.worldguard.protection.flags.StateFlag.State.ALLOW;
+                var D = com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+                // build must be allow too: WorldGuard combines it with block-break, and the global deny would win
+                r.setFlag(com.sk89q.worldguard.protection.flags.Flags.BUILD, A);
+                r.setFlag(com.sk89q.worldguard.protection.flags.Flags.BLOCK_BREAK, A);
+                r.setFlag(com.sk89q.worldguard.protection.flags.Flags.INTERACT, A);
+                r.setFlag(com.sk89q.worldguard.protection.flags.Flags.BLOCK_PLACE, D);
+                r.setFlag(com.sk89q.worldguard.protection.flags.Flags.USE, D);
+                r.setFlag(com.sk89q.worldguard.protection.flags.Flags.CHEST_ACCESS, D);
+                rm.addRegion(r);
+            }
+            rm.save();
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     static void miningExp(Player p, double amount, Location at) {
         if (amount <= 0 || !on("MMOCore")) return;
         try {

@@ -16,7 +16,8 @@ final class Mine {
     final String id, name, symbol, theme, schematic, newMaterial, elite;
     final int index;
     final int[] paste, boxMin, boxMax;
-    int[] cubeMin, cubeMax;
+    int[] cubeMin, cubeMax;          // the owner's cube (overrides.yml), null until he marks one
+    final int[] autoMin, autoMax;    // the automatic cube of 2026-11-24, kept only so it can be undone
     final double[] spawn;
     final List<String[]> mix = new ArrayList<>();      // [block, weight]
     final List<String[]> tiles = new ArrayList<>();    // [schematic, dx, dz]
@@ -38,8 +39,9 @@ final class Mine {
         newMaterial = s.getString("new-material", "STONE");
         elite = s.getString("elite", "");
         paste = ints(s.getIntegerList("paste"));
-        cubeMin = ints(s.getIntegerList("cube.min"));
-        cubeMax = ints(s.getIntegerList("cube.max"));
+        String ac = s.contains("auto-cube") ? "auto-cube" : s.contains("cube") ? "cube" : null;
+        autoMin = ac == null ? null : ints(s.getIntegerList(ac + ".min"));
+        autoMax = ac == null ? null : ints(s.getIntegerList(ac + ".max"));
         boxMin = ints(s.getIntegerList("box.min"));
         boxMax = ints(s.getIntegerList("box.max"));
         List<Double> sp = s.getDoubleList("spawn");
@@ -65,8 +67,12 @@ final class Mine {
         return symbol.equals(name) ? "Prison " + symbol : "Prison " + symbol + " " + name;
     }
 
+    boolean hasCube() {
+        return cubeMin != null && cubeMax != null;
+    }
+
     boolean inCube(Location l) {
-        return in(l, cubeMin, cubeMax);
+        return hasCube() && in(l, cubeMin, cubeMax);
     }
 
     boolean inBox(Location l) {
@@ -79,6 +85,7 @@ final class Mine {
     }
 
     long cubeVolume() {
+        if (!hasCube()) return 0;
         return (long) (cubeMax[0] - cubeMin[0] + 1) * (cubeMax[1] - cubeMin[1] + 1) * (cubeMax[2] - cubeMin[2] + 1);
     }
 
