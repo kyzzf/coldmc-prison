@@ -93,10 +93,11 @@ final class Builder {
                     bad++;
                     continue;
                 }
-                int dy = Integer.parseInt(p[0]), dz = Integer.parseInt(p[1]);
-                BlockVector3 a = BlockVector3.at(m.paste[0] + Integer.parseInt(p[2]), m.paste[1] + dy, m.paste[2] + dz);
-                BlockVector3 b = BlockVector3.at(m.paste[0] + Integer.parseInt(p[3]), m.paste[1] + dy, m.paste[2] + dz);
-                es.setBlocks((com.sk89q.worldedit.regions.Region) new CuboidRegion(ww, a, b), (com.sk89q.worldedit.function.pattern.Pattern) st);
+                // block by block into one edit: a setBlocks per run made FAWE start (and wait for) a parallel
+                // apply every time, about one run a second (2026-11-25)
+                int y = m.paste[1] + Integer.parseInt(p[0]), z = m.paste[2] + Integer.parseInt(p[1]);
+                for (int x = m.paste[0] + Integer.parseInt(p[2]); x <= m.paste[0] + Integer.parseInt(p[3]); x++)
+                    es.setBlock(x, y, z, st);
             }
         }
         if (bad > 0) plugin.getLogger().warning(m.id + ": " + bad + " floor runs with an unknown block");
