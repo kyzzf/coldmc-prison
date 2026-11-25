@@ -37,7 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class Prison extends JavaPlugin implements Listener {
     final Map<String, Mine> mines = new LinkedHashMap<>();
     final Map<String, Double> extraExp = new HashMap<>();
-    final Map<String, List<String>> floors = new HashMap<>();   // schematic file -> floor runs (floors.yml)
+    final Map<String, List<String>> floors = new HashMap<>();
+    final Map<String, Raid> raids = new LinkedHashMap<>();      // Raid Dungeons (raids.yml)   // schematic file -> floor runs (floors.yml)
     final Map<String, Double> nexoExp = new HashMap<>();
     String worldName = "world_prison";
     Builder builder;
@@ -75,6 +76,10 @@ public final class Prison extends JavaPlugin implements Listener {
         worldName = y.getString("world", worldName);
         ConfigurationSection s = y.getConfigurationSection("mines");
         if (s != null) for (String id : s.getKeys(false)) mines.put(id, new Mine(id, s.getConfigurationSection(id)));
+        raids.clear();
+        YamlConfiguration ry = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "raids.yml"));
+        ConfigurationSection rs = ry.getConfigurationSection("raids");
+        if (rs != null) for (String id : rs.getKeys(false)) raids.put(id, new Raid(id, rs.getConfigurationSection(id)));
         floors.clear();
         YamlConfiguration fy = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "floors.yml"));
         for (String k : fy.getKeys(false)) floors.put(k, fy.getStringList(k));
@@ -100,7 +105,7 @@ public final class Prison extends JavaPlugin implements Listener {
             m.lastReset = now;
             m.lastBoss = now;
         }
-        getLogger().info(mines.size() + " prison mines in " + worldName);
+        getLogger().info(mines.size() + " prison mines and " + raids.size() + " raid dungeons in " + worldName);
     }
 
     World world() {
@@ -408,6 +413,51 @@ public final class Prison extends JavaPlugin implements Listener {
                 for (Mine m : list) reset(m, true);
                 s.sendMessage("§aReset " + list.size() + " cube(s).");
             }
+            case "raid" -> {
+                // /prison raid list | tp <id> | build <id|all>
+                String rsub = a.length > 1 ? a[1].toLowerCase() : "list";
+                if (rsub.equals("list")) {
+                    s.sendMessage("§7Raid Dungeons: §f" + String.join(", ", raids.keySet()));
+                    return true;
+                }
+                List<Raid> l = new ArrayList<>();
+                if (a.length > 2 && a[2].equalsIgnoreCase("all")) l.addAll(raids.values());
+                else if (a.length > 2 && raids.containsKey(a[2].toLowerCase())) l.add(raids.get(a[2].toLowerCase()));
+                if (l.isEmpty()) {
+                    s.sendMessage("§c/prison raid list | tp <id> | build <id|all>");
+                    return true;
+                }
+                if (rsub.equals("tp")) {
+                    if (s instanceof Player p && world() != null) p.teleport(l.get(0).spawnAt(world()));
+                    return true;
+                }
+                if (rsub.equals("build")) {
+                    World w = world();
+                    if (w == null || busy.get()) {
+                        s.sendMessage("§cBusy, or " + worldName + " is not loaded.");
+                        return true;
+                    }
+                    busy.set(true);
+                    cancel.set(false);
+                    s.sendMessage("§7Building " + l.size() + " raid dungeon(s)...");
+                    Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+                        long t0 = System.currentTimeMillis();
+                        int done = 0;
+                        for (Raid r : l) {
+                            if (cancel.get()) break;
+                            getLogger().info("raid build " + r.id + " (" + (done + 1) + "/" + l.size() + ")");
+                            try {
+                                builder.buildRaid(w, r);
+                                done++;
+                            } catch (Throwable e) {
+                                getLogger().warning("raid build " + r.id + " failed: " + e);
+                            }
+                        }
+                        busy.set(false);
+                        getLogger().info("raid build: " + done + "/" + l.size() + " in " + (System.currentTimeMillis() - t0) / 1000 + " s");
+                    });
+                }
+            }
             case "tp" -> {
                 Mine m = mine(s, a);
                 if (m == null || !(s instanceof Player p) || world() == null) return true;
@@ -483,7 +533,7 @@ public final class Prison extends JavaPlugin implements Listener {
                         + "§a. Filling it now...");
                 async(s, "fill", List.of(m), builder::fill);
             }
-            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setboss <id> <mob..> | clearboss <id> | floors <id|all|from <id>> | setcube <id> | unsetcube <id> | clearcubes [id|all] | cancel | reload");
+            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setboss <id> <mob..> | clearboss <id> | floors <id|all|from <id>> | raid list|tp|build | setcube <id> | unsetcube <id> | clearcubes [id|all] | cancel | reload");
         }
         return true;
     }
@@ -540,7 +590,7 @@ public final class Prison extends JavaPlugin implements Listener {
 
     @Override
     public List<String> onTabComplete(CommandSender s, Command c, String label, String[] a) {
-        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setboss", "clearboss", "floors", "setcube", "unsetcube", "clearcubes", "cancel", "reload");
+        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setboss", "clearboss", "floors", "raid", "setcube", "unsetcube", "clearcubes", "cancel", "reload");
         if (a.length == 2) {
             List<String> l = new ArrayList<>();
             if (a[0].equalsIgnoreCase("build") || a[0].equalsIgnoreCase("reset") || a[0].equalsIgnoreCase("clearcubes") || a[0].equalsIgnoreCase("floors")) l.add("all");

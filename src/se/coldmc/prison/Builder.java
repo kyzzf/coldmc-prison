@@ -118,6 +118,17 @@ final class Builder {
         }
     }
 
+    /** A Raid Dungeon: the whole schematic (its chests and their loot included), then its barrier box. */
+    void buildRaid(World w, Raid r) throws Exception {
+        try (EditSession es = session(w)) {
+            pasteOne(es, r.schematic, v(r.paste));
+        }
+        try (EditSession es = session(w)) {
+            es.makeFaces(new CuboidRegion(BukkitAdapter.adapt(w), v(r.boxMin), v(r.boxMax)),
+                    BlockTypes.BARRIER.getDefaultState());
+        }
+    }
+
     private void pasteOne(EditSession es, String schematic, BlockVector3 minCorner) throws Exception {
         File f = new File(Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit").getDataFolder(), "schematics/" + schematic);
         ClipboardFormat fmt = ClipboardFormats.findByFile(f);
