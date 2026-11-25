@@ -78,6 +78,7 @@ public final class Prison extends JavaPlugin implements Listener {
         floors.clear();
         YamlConfiguration fy = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "floors.yml"));
         for (String k : fy.getKeys(false)) floors.put(k, fy.getStringList(k));
+        getLogger().info(floors.size() + " builds with ground to add (floors.yml)");
         ConfigurationSection ee = y.getConfigurationSection("extra-exp");
         if (ee != null) for (String k : ee.getKeys(false)) extraExp.put(k.toUpperCase(), ee.getDouble(k));
         ConfigurationSection ne = getConfig().getConfigurationSection("nexo-exp");
@@ -346,6 +347,12 @@ public final class Prison extends JavaPlugin implements Listener {
     public boolean onCommand(CommandSender s, Command c, String label, String[] a) {
         String sub = a.length > 0 ? a[0].toLowerCase() : "help";
         switch (sub) {
+            case "floors" -> {
+                List<Mine> list = pick(s, a);
+                if (list == null) return true;
+                s.sendMessage("§7Laying the missing ground in " + list.size() + " prison(s)...");
+                async(s, "floors", list, builder::floors);
+            }
             case "unsetcube" -> {
                 Mine m = mine(s, a);
                 if (m == null) return true;
@@ -476,7 +483,7 @@ public final class Prison extends JavaPlugin implements Listener {
                         + "§a. Filling it now...");
                 async(s, "fill", List.of(m), builder::fill);
             }
-            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setboss <id> <mob..> | clearboss <id> | setcube <id> | unsetcube <id> | clearcubes [id|all] | cancel | reload");
+            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setboss <id> <mob..> | clearboss <id> | floors <id|all|from <id>> | setcube <id> | unsetcube <id> | clearcubes [id|all] | cancel | reload");
         }
         return true;
     }
@@ -533,10 +540,10 @@ public final class Prison extends JavaPlugin implements Listener {
 
     @Override
     public List<String> onTabComplete(CommandSender s, Command c, String label, String[] a) {
-        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setboss", "clearboss", "setcube", "unsetcube", "clearcubes", "cancel", "reload");
+        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setboss", "clearboss", "floors", "setcube", "unsetcube", "clearcubes", "cancel", "reload");
         if (a.length == 2) {
             List<String> l = new ArrayList<>();
-            if (a[0].equalsIgnoreCase("build") || a[0].equalsIgnoreCase("reset") || a[0].equalsIgnoreCase("clearcubes")) l.add("all");
+            if (a[0].equalsIgnoreCase("build") || a[0].equalsIgnoreCase("reset") || a[0].equalsIgnoreCase("clearcubes") || a[0].equalsIgnoreCase("floors")) l.add("all");
             for (String id : mines.keySet()) if (id.startsWith(a[1].toLowerCase())) l.add(id);
             return l;
         }

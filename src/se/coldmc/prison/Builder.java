@@ -79,7 +79,8 @@ final class Builder {
     /** The ground the original export lacks (floors.yml, find_prison_floors.py): under plants, water and
      *  sand left floating, and a floor in the old mine pits. the owner, 2026-11-25. */
     void floors(World w, Mine m) throws Exception {
-        List<String> runs = plugin.floors.get(m.schematic.substring(m.schematic.lastIndexOf('/') + 1));
+        String f = m.schematic.substring(m.schematic.lastIndexOf('/') + 1);
+        List<String> runs = plugin.floors.get(f.endsWith(".schematic") ? f.substring(0, f.length() - 10) : f);
         if (runs == null || runs.isEmpty()) return;
         java.util.Map<String, BlockState> states = new java.util.HashMap<>();
         com.sk89q.worldedit.world.World ww = BukkitAdapter.adapt(w);
