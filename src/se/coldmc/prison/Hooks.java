@@ -46,6 +46,24 @@ final class Hooks {
         }
     }
 
+    static boolean mythicExists(String id) {
+        if (!on("MythicMobs")) return false;
+        try {
+            return io.lumine.mythic.bukkit.MythicBukkit.inst().getMobManager().getMythicMob(id).isPresent();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    static java.util.Collection<String> mythicNames() {
+        if (!on("MythicMobs")) return java.util.List.of();
+        try {
+            return new java.util.TreeSet<>(io.lumine.mythic.bukkit.MythicBukkit.inst().getMobManager().getMobNames());
+        } catch (Throwable t) {
+            return java.util.List.of();
+        }
+    }
+
     /** The cube's WorldGuard region: the only place in world_prison where blocks can be broken. */
     static boolean cubeRegion(org.bukkit.World w, Mine m) {
         if (!on("WorldGuard")) return false;

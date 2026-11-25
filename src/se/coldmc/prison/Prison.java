@@ -81,7 +81,12 @@ public final class Prison extends JavaPlugin implements Listener {
         YamlConfiguration o = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "overrides.yml"));
         for (String id : o.getKeys(false)) {
             Mine m = mines.get(id);
-            if (m == null || !o.contains(id + ".cube.min")) continue;
+            if (m == null) continue;
+            if (o.contains(id + ".bosses")) {     // the owner's own boss list (/prison setboss)
+                m.bosses.clear();
+                m.bosses.addAll(o.getStringList(id + ".bosses"));
+            }
+            if (!o.contains(id + ".cube.min")) continue;
             m.cubeMin = Mine.ints(o.getIntegerList(id + ".cube.min"));
             m.cubeMax = Mine.ints(o.getIntegerList(id + ".cube.max"));
         }
@@ -400,7 +405,39 @@ public final class Prison extends JavaPlugin implements Listener {
             case "boss" -> {
                 Mine m = mine(s, a);
                 if (m == null) return true;
+                if (m.bosses.isEmpty()) {
+                    s.sendMessage("§c" + m.title() + " has no boss. /prison setboss " + m.id + " <mythic mob>");
+                    return true;
+                }
                 s.sendMessage(spawnBoss(m) ? "§aBoss spawned in " + m.title() : "§cNo boss spawned.");
+            }
+            case "setboss" -> {
+                Mine m = mine(s, a);
+                if (m == null) return true;
+                if (a.length < 3) {
+                    s.sendMessage("§e/prison setboss <id> <mob> [mob...]  §7(a MythicMobs id, or vanilla:<TYPE>; several = one picked at random)");
+                    return true;
+                }
+                List<String> l = new ArrayList<>();
+                for (int i = 2; i < a.length; i++) {
+                    String k = a[i].contains(":") ? a[i] : "mythic:" + a[i];
+                    if (k.startsWith("mythic:") && !Hooks.mythicExists(k.substring(7))) {
+                        s.sendMessage("§cNo MythicMobs mob called " + k.substring(7) + ". Nothing changed.");
+                        return true;
+                    }
+                    l.add(k);
+                }
+                m.bosses.clear();
+                m.bosses.addAll(l);
+                saveBosses(s, m);
+                s.sendMessage("§a" + m.title() + " boss: " + String.join(", ", l) + "§7 (rare: checked every few minutes, and every few refills while someone mines)");
+            }
+            case "clearboss" -> {
+                Mine m = mine(s, a);
+                if (m == null) return true;
+                m.bosses.clear();
+                saveBosses(s, m);
+                s.sendMessage("§a" + m.title() + " has no boss now.");
             }
             case "setcube" -> {
                 Mine m = mine(s, a);
@@ -427,7 +464,7 @@ public final class Prison extends JavaPlugin implements Listener {
                         + "§a. Filling it now...");
                 async(s, "fill", List.of(m), builder::fill);
             }
-            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setcube <id> | unsetcube <id> | clearcubes [id|all] | cancel | reload");
+            default -> s.sendMessage("§e/prison list | info <id> | tp <id> | build <id|all|from <id>> [nopaste] | reset <id|all> | boss <id> | setboss <id> <mob..> | clearboss <id> | setcube <id> | unsetcube <id> | clearcubes [id|all] | cancel | reload");
         }
         return true;
     }
@@ -471,14 +508,30 @@ public final class Prison extends JavaPlugin implements Listener {
         return m == null ? null : List.of(m);
     }
 
+    void saveBosses(CommandSender s, Mine m) {
+        File f = new File(getDataFolder(), "overrides.yml");
+        YamlConfiguration o = YamlConfiguration.loadConfiguration(f);
+        o.set(m.id + ".bosses", new ArrayList<>(m.bosses));
+        try {
+            o.save(f);
+        } catch (Exception e) {
+            s.sendMessage("§cCould not save overrides.yml: " + e);
+        }
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender s, Command c, String label, String[] a) {
-        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setcube", "unsetcube", "clearcubes", "cancel", "reload");
+        if (a.length == 1) return List.of("list", "info", "tp", "build", "reset", "boss", "setboss", "clearboss", "setcube", "unsetcube", "clearcubes", "cancel", "reload");
         if (a.length == 2) {
             List<String> l = new ArrayList<>();
             if (a[0].equalsIgnoreCase("build") || a[0].equalsIgnoreCase("reset") || a[0].equalsIgnoreCase("clearcubes")) l.add("all");
             for (String id : mines.keySet()) if (id.startsWith(a[1].toLowerCase())) l.add(id);
             return l;
+        }
+        if (a[0].equalsIgnoreCase("setboss")) {
+            List<String> l = new ArrayList<>();
+            for (String n : Hooks.mythicNames()) if (n.toLowerCase().startsWith(a[a.length - 1].toLowerCase())) l.add(n);
+            return l.size() > 50 ? l.subList(0, 50) : l;
         }
         return List.of();
     }
