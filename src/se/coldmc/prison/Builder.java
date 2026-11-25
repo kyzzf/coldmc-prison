@@ -21,6 +21,7 @@ import org.bukkit.World;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.util.List;
 
 /** Every WorldEdit job: paste a prison, box it in barriers, fill its mining cube, undo an old automatic cube. */
 final class Builder {
@@ -46,6 +47,9 @@ final class Builder {
     void build(World w, Mine m, boolean paste) throws Exception {
         try (EditSession es = session(w)) {
             if (paste) pasteSchematic(es, m, null);
+        }
+        if (paste) floors(w, m);
+        try (EditSession es = session(w)) {
             es.makeFaces(new CuboidRegion(BukkitAdapter.adapt(w), v(m.boxMin), v(m.boxMax)),
                     BlockTypes.BARRIER.getDefaultState());
         }
@@ -71,6 +75,31 @@ final class Builder {
     }
 
     static final int TILE = 128;
+
+    /** The ground the original export lacks (floors.yml, find_prison_floors.py): under plants, water and
+     *  sand left floating, and a floor in the old mine pits. the owner, 2026-11-25. */
+    void floors(World w, Mine m) throws Exception {
+        List<String> runs = plugin.floors.get(m.schematic.substring(m.schematic.lastIndexOf('/') + 1));
+        if (runs == null || runs.isEmpty()) return;
+        java.util.Map<String, BlockState> states = new java.util.HashMap<>();
+        com.sk89q.worldedit.world.World ww = BukkitAdapter.adapt(w);
+        int bad = 0;
+        try (EditSession es = session(w)) {
+            for (String r : runs) {
+                String[] p = r.split(" ");
+                BlockState st = states.computeIfAbsent(p[4], Builder::state);
+                if (st == null) {
+                    bad++;
+                    continue;
+                }
+                int dy = Integer.parseInt(p[0]), dz = Integer.parseInt(p[1]);
+                BlockVector3 a = BlockVector3.at(m.paste[0] + Integer.parseInt(p[2]), m.paste[1] + dy, m.paste[2] + dz);
+                BlockVector3 b = BlockVector3.at(m.paste[0] + Integer.parseInt(p[3]), m.paste[1] + dy, m.paste[2] + dz);
+                es.setBlocks((com.sk89q.worldedit.regions.Region) new CuboidRegion(ww, a, b), (com.sk89q.worldedit.function.pattern.Pattern) st);
+            }
+        }
+        if (bad > 0) plugin.getLogger().warning(m.id + ": " + bad + " floor runs with an unknown block");
+    }
 
     /** Undo the automatic cube of 2026-11-24 (the owner: "wrong placed mineable blocks surrounded by bedrock"):
      *  empty the cube and its one-block bedrock shell, then paste the original build back into exactly

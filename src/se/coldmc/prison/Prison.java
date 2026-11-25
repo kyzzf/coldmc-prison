@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class Prison extends JavaPlugin implements Listener {
     final Map<String, Mine> mines = new LinkedHashMap<>();
     final Map<String, Double> extraExp = new HashMap<>();
+    final Map<String, List<String>> floors = new HashMap<>();   // schematic file -> floor runs (floors.yml)
     final Map<String, Double> nexoExp = new HashMap<>();
     String worldName = "world_prison";
     Builder builder;
@@ -74,6 +75,9 @@ public final class Prison extends JavaPlugin implements Listener {
         worldName = y.getString("world", worldName);
         ConfigurationSection s = y.getConfigurationSection("mines");
         if (s != null) for (String id : s.getKeys(false)) mines.put(id, new Mine(id, s.getConfigurationSection(id)));
+        floors.clear();
+        YamlConfiguration fy = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "floors.yml"));
+        for (String k : fy.getKeys(false)) floors.put(k, fy.getStringList(k));
         ConfigurationSection ee = y.getConfigurationSection("extra-exp");
         if (ee != null) for (String k : ee.getKeys(false)) extraExp.put(k.toUpperCase(), ee.getDouble(k));
         ConfigurationSection ne = getConfig().getConfigurationSection("nexo-exp");
