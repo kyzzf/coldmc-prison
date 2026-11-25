@@ -53,6 +53,7 @@ public final class Prison extends JavaPlugin implements Listener {
         builder = new Builder(this);
         load();
         getServer().getPluginManager().registerEvents(this, this);
+        getServer().getPluginManager().registerEvents(new KeepPlants(this), this);   // schematic flowers stay where they were built
         // one heartbeat per second: resets, mob waves, boss checks
         Bukkit.getScheduler().runTaskTimer(this, this::heartbeat, 100L, 20L);
     }
