@@ -145,8 +145,47 @@ final class Builder {
         }
         if (n == 0) rp.add(BlockTypes.STONE.getDefaultState(), 1);
         try (EditSession es = session(w)) {
+            // the owner, 2026-11-25: the mine is only the minable part - bedrock (and barrier) inside the cube stays
+            es.setMask(com.sk89q.worldedit.function.mask.Masks.negate(
+                    new com.sk89q.worldedit.function.mask.BlockTypeMask(es, BlockTypes.BEDROCK, BlockTypes.BARRIER)));
             es.setBlocks((com.sk89q.worldedit.regions.Region) new CuboidRegion(BukkitAdapter.adapt(w), v(m.cubeMin), v(m.cubeMax)), (com.sk89q.worldedit.function.pattern.Pattern) rp);
         }
+    }
+
+    /** Shave off every outer face of a selection that is (almost) all bedrock or barrier, so the cube is
+     *  only the minable inside (the owner, 2026-11-25). Returns null if nothing minable is left. */
+    static int[][] trimBedrock(World w, int[] a0, int[] b0) {
+        int[] a = a0.clone(), b = b0.clone();
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (int axis = 0; axis < 3; axis++) {
+                for (int side = 0; side < 2; side++) {
+                    if (a[axis] > b[axis]) return null;
+                    int at = side == 0 ? a[axis] : b[axis];
+                    if (hard(w, a, b, axis, at) >= 0.9) {
+                        if (side == 0) a[axis]++;
+                        else b[axis]--;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        return a[0] <= b[0] && a[1] <= b[1] && a[2] <= b[2] ? new int[][]{a, b} : null;
+    }
+
+    private static double hard(World w, int[] a, int[] b, int axis, int at) {
+        int n = 0, hard = 0;
+        int[] lo = a.clone(), hi = b.clone();
+        lo[axis] = hi[axis] = at;
+        for (int x = lo[0]; x <= hi[0]; x++)
+            for (int y = lo[1]; y <= hi[1]; y++)
+                for (int z = lo[2]; z <= hi[2]; z++) {
+                    Material t = w.getBlockAt(x, y, z).getType();
+                    n++;
+                    if (t == Material.BEDROCK || t == Material.BARRIER) hard++;
+                }
+        return n == 0 ? 1 : (double) hard / n;
     }
 
     static BlockState state(String id) {

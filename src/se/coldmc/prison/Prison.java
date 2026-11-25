@@ -451,6 +451,14 @@ public final class Prison extends JavaPlugin implements Listener {
                     s.sendMessage("§cMake a WorldEdit selection of the cube first (//wand).");
                     return true;
                 }
+                int[][] raw = sel;
+                sel = Builder.trimBedrock(p.getWorld(), sel[0], sel[1]);
+                if (sel == null) {
+                    s.sendMessage("§cThat selection is all bedrock - nothing in it can be mined.");
+                    return true;
+                }
+                if (!java.util.Arrays.equals(raw[0], sel[0]) || !java.util.Arrays.equals(raw[1], sel[1]))
+                    s.sendMessage("§7Bedrock edges left out: " + str(raw[0]) + " -> " + str(raw[1]) + " became the minable inside.");
                 m.cubeMin = sel[0];
                 m.cubeMax = sel[1];
                 File f = new File(getDataFolder(), "overrides.yml");
